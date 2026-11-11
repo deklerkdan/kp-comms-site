@@ -609,7 +609,7 @@ function act(btn, fn, args, done) {
   busy(1);
   return authed(fn, ...args).then(r => { if (done) toast(done); return refresh(true).then(() => r); })
     .catch(e => { toast(e.message); if (btn) btn.disabled = false; throw e; })
-    .finally(() => busy(-1));
+    .finally(() => { busy(-1); try { snakeAction(); } catch (e) {} });
 }
 
 /* ------------------------------------------------ modals */
@@ -1011,12 +1011,41 @@ function busy(d) {
 const SN = { el: null, mode: '', t: null, dir: [1, 0], next: [1, 0], body: [], food: [0, 0], eaten: 0, over: false };
 const SN_N = 15, SN_C = 16;
 const SLACKER = ['Get back to work, you slacker!', 'Three snacks is plenty. Those posts won’t schedule themselves.', 'Break’s over! Those KPIs won’t update themselves.', 'That’s your lot. Back to the comms coalface!', 'Nom nom nom… and back to work.'];
+/* The game is saved on the device: the snake, its length and the score carry on next time.
+   A break is 3 snacks; then the snake sleeps until 3 hours have passed or you've done 5 things in the app. */
+const BREAK_SNACKS = 3, BREAK_HOURS = 3, BREAK_ACTIONS = 5;
+function snakeLoad() {
+  let s = null; try { s = JSON.parse(store.get('Snake') || 'null'); } catch (e) {}
+  s = s || {};
+  SN.body = Array.isArray(s.body) && s.body.length ? s.body : [[5, 7], [4, 7], [3, 7]];
+  SN.dir = SN.next = Array.isArray(s.dir) ? s.dir : [1, 0];
+  SN.food = Array.isArray(s.food) ? s.food : null;
+  SN.total = s.total || 0; SN.breakEaten = s.breakEaten || 0; SN.sleptAt = s.sleptAt || 0; SN.actions = s.actions || 0;
+  if (!SN.food) snakeFood();
+}
+function snakeSave() { store.set('Snake', JSON.stringify({ body: SN.body, dir: SN.dir, food: SN.food, total: SN.total, breakEaten: SN.breakEaten, sleptAt: SN.sleptAt, actions: SN.actions })); }
+/** True while the snake is asleep after a break; wakes after BREAK_HOURS or BREAK_ACTIONS app actions. */
+function snakeAsleep() {
+  if (SN.breakEaten < BREAK_SNACKS) return false;
+  if (Date.now() - SN.sleptAt > BREAK_HOURS * 3600000 || SN.actions >= BREAK_ACTIONS) { SN.breakEaten = 0; SN.actions = 0; SN.sleptAt = 0; snakeSave(); return false; }
+  return true;
+}
+/** Called after every save in the app: counts towards waking the snake. */
+function snakeAction() { snakeLoad(); if (SN.breakEaten >= BREAK_SNACKS) { SN.actions++; snakeSave(); } }
 function snakeOpen(mode) {
   if (SN.el) return;
-  SN.mode = mode; SN.eaten = 0; SN.over = false; SN.dir = [1, 0]; SN.next = [1, 0];
-  SN.body = [[5, 7], [4, 7], [3, 7]]; snakeFood();
+  snakeLoad();
+  SN.mode = mode; SN.over = false;
+  const asleep = mode === 'break' && snakeAsleep();
   const cv = el('canvas', { width: SN_N * SN_C, height: SN_N * SN_C, 'aria-label': 'Snake game' });
-  const msg = el('div', { class: 'msg', text: mode === 'save' ? 'Saving… grab a snack while you wait!' : mode === 'break' ? 'Eat 3 snacks. Arrows, swipe or the buttons.' : '' });
+  let msgText = mode === 'save' ? 'Saving… grab a snack while you wait!' : 'Eat ' + (BREAK_SNACKS - SN.breakEaten) + ' snack' + (BREAK_SNACKS - SN.breakEaten === 1 ? '' : 's') + '. Arrows, swipe or the buttons.';
+  if (asleep) {
+    const mins = Math.max(1, Math.round((SN.sleptAt + BREAK_HOURS * 3600000 - Date.now()) / 60000));
+    const left = BREAK_ACTIONS - SN.actions;
+    msgText = 'The snake’s having a nap. 😴 Back in ' + (mins >= 60 ? Math.round(mins / 60) + ' h' : mins + ' min') + ', or after ' + left + ' more thing' + (left === 1 ? '' : 's') + ' done in the app.';
+    SN.over = true;
+  }
+  const msg = el('div', { class: 'msg', text: msgText });
   const score = el('div', { class: 'small muted' });
   const turn = (x, y) => { if (SN.dir[0] !== -x || SN.dir[1] !== -y) SN.next = [x, y]; };
   const pad = el('div', { class: 'pad' }, [el('span'), el('button', { type: 'button', text: '↑', 'aria-label': 'Up', onclick: () => turn(0, -1) }), el('span'),
@@ -1028,9 +1057,9 @@ function snakeOpen(mode) {
   SN.key = e => { const k = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] }[e.key]; if (k) { e.preventDefault(); turn(k[0], k[1]); } if (e.key === 'Escape') snakeClose(); };
   document.addEventListener('keydown', SN.key, true);
   SN.parts = { cv, msg, score };
-  SN.el = el('div', { class: 'snake-back' }, el('div', { class: 'snake', role: 'dialog', 'aria-label': 'Snake' }, [msg, cv, score, pad, close]));
+  SN.el = el('div', { class: 'snake-back' }, el('div', { class: 'snake', role: 'dialog', 'aria-label': 'Snake' }, [msg, cv, score, asleep ? '' : pad, close]));
   document.body.append(SN.el);
-  SN.t = setInterval(snakeStep, 140);
+  if (!asleep) SN.t = setInterval(snakeStep, 140);
   snakeDraw();
 }
 function snakeFood() { let f; do { f = [Math.floor(Math.random() * SN_N), Math.floor(Math.random() * SN_N)]; } while (SN.body.some(b => b[0] === f[0] && b[1] === f[1])); SN.food = f; }
@@ -1038,14 +1067,18 @@ function snakeStep() {
   if (SN.over) return;
   SN.dir = SN.next;
   const h = [(SN.body[0][0] + SN.dir[0] + SN_N) % SN_N, (SN.body[0][1] + SN.dir[1] + SN_N) % SN_N];
-  if (SN.body.some(b => b[0] === h[0] && b[1] === h[1])) { SN.parts.msg.textContent = 'Oops! Tied yourself in a knot. Again…'; SN.body = [[5, 7], [4, 7], [3, 7]]; SN.dir = SN.next = [1, 0]; snakeDraw(); return; }
+  if (SN.body.some(b => b[0] === h[0] && b[1] === h[1])) { SN.parts.msg.textContent = 'Oops! Tied yourself in a knot. Again…'; SN.body = [[5, 7], [4, 7], [3, 7]]; SN.dir = SN.next = [1, 0]; snakeSave(); snakeDraw(); return; }
   SN.body.unshift(h);
   if (h[0] === SN.food[0] && h[1] === SN.food[1]) {
-    SN.eaten++;
-    const best = Math.max(SN.eaten, Number(store.get('SnakeBest') || 0)); store.set('SnakeBest', String(best));
-    if (SN.mode === 'break' && SN.eaten >= 3) { SN.over = true; SN.parts.msg.textContent = SLACKER[Math.floor(Math.random() * SLACKER.length)]; snakeDraw(); return; }
+    SN.total++;
+    store.set('SnakeBest', String(Math.max(SN.body.length, Number(store.get('SnakeBest') || 0))));
     snakeFood();
+    if (SN.mode === 'break') {
+      SN.breakEaten++;
+      if (SN.breakEaten >= BREAK_SNACKS) { SN.over = true; SN.sleptAt = Date.now(); SN.actions = 0; SN.parts.msg.textContent = SLACKER[Math.floor(Math.random() * SLACKER.length)]; }
+    }
   } else SN.body.pop();
+  snakeSave();
   snakeDraw();
 }
 function snakeDraw() {
@@ -1053,7 +1086,7 @@ function snakeDraw() {
   x.fillStyle = cs.getPropertyValue('--ground'); x.fillRect(0, 0, cv.width, cv.height);
   x.fillStyle = '#e8b324'; x.beginPath(); x.arc(SN.food[0] * SN_C + SN_C / 2, SN.food[1] * SN_C + SN_C / 2, SN_C / 2 - 2, 0, 7); x.fill();
   SN.body.forEach((b, i) => { x.fillStyle = i ? '#7cc242' : '#1e7a2f'; x.fillRect(b[0] * SN_C + 1, b[1] * SN_C + 1, SN_C - 2, SN_C - 2); });
-  score.textContent = 'Snacks: ' + SN.eaten + (SN.mode === 'break' ? ' of 3' : '') + ' · best ' + (store.get('SnakeBest') || 0);
+  score.textContent = 'Length ' + SN.body.length + ' · snacks ever ' + SN.total + (SN.mode === 'break' ? ' · this break ' + Math.min(SN.breakEaten, BREAK_SNACKS) + ' of ' + BREAK_SNACKS : '') + ' · longest ' + (store.get('SnakeBest') || SN.body.length);
 }
 function snakeClose() {
   if (!SN.el) return;
