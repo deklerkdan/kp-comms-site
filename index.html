@@ -349,7 +349,7 @@ function chChip(ch, type) {
   const name = labelMode === 'icons' && ICONS['ch-' + b] ? [ico('ch-' + b), boost ? ' Boost' : ''] : [ch || 'Channel tbc'];
   return el('span', { class: 'chip ch-' + b, title: (ch || 'Channel tbc') + (type ? ' • ' + type : '') }, name.concat(type ? [' • ' + type] : []));
 }
-function stChip(p) { const lab = p.stage === 'suggested' && p.by ? 'Suggested by ' + p.by.name : STAGE_LABEL[p.stage] || p.stage; return el('span', { class: 'chip st-' + p.stage }, lab); }
+function stChip(p) { const lab = p.stage === 'suggested' && p.by ? (p.reported ? 'Reported by ' : 'Suggested by ') + p.by.name : STAGE_LABEL[p.stage] || p.stage; return el('span', { class: 'chip st-' + p.stage }, lab); }
 const commentsOf = id => (S.D.comments || []).filter(c => c.post === id).sort((a, b) => a.at.localeCompare(b.at));
 
 /* ------------------------------------------------ render */
@@ -379,7 +379,7 @@ function signInView() {
   const step2 = el('div', { style: 'display:none', class: 'row' }, [code, el('button', { class: 'btn pri', type: 'button', text: 'Sign in', onclick: e => verify(e.target) })]);
   const send = el('button', { class: 'btn pri', type: 'button', text: 'Email me a code', onclick: e => {
     const b = e.target; b.disabled = true; msg.className = 'small muted'; msg.textContent = 'Sending…';
-    call('requestCode', email.value.trim()).then(() => { store.set('Email', email.value.trim()); msg.textContent = 'Check your email (and junk) for a 6-digit code, then type it here.'; step2.style.display = ''; code.focus(); })
+    call('requestCode', email.value.trim()).then(() => { store.set('Email', email.value.trim()); msg.textContent = 'Check your email for a 6-digit code and type it here. Not there? Look in Junk Email, and mark it “Not junk” so the next one lands in your inbox.'; step2.style.display = ''; code.focus(); })
       .catch(err => { msg.className = 'error'; msg.textContent = err.message; }).finally(() => { b.disabled = false; });
   } });
   function verify(b) {
@@ -624,28 +624,41 @@ function saveRow(saveText, onSave, close) {
   return el('div', { class: 'row' }, [b, el('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: () => close() })]);
 }
 
-function openSuggest(c, p) {
+function openSuggest(c, p, startMode) {
+  let mode = startMode || (p && p.reported ? 'report' : 'suggest');
   const chans = new Set(p ? p.channels.map(ch => BASE(ch.channel)).filter(Boolean) : []);
+  const links = {}, types = {};
+  if (p) p.channels.forEach(ch => { links[BASE(ch.channel)] = ch.link || ''; types[BASE(ch.channel)] = ch.type || ''; });
+  const perCh = el('div', { style: 'display:grid;gap:8px' });
+  const drawPerCh = () => perCh.replaceChildren(...(mode === 'report' ? Array.from(chans).map(ch => el('div', { class: 'two' }, [
+    field(ch + ': link to the post', el('input', { type: 'url', value: links[ch] || '', placeholder: 'https://…', oninput: e => { links[ch] = e.target.value; } })),
+    field(ch + ': type', el('input', { value: types[ch] || '', list: 'kpc-types', placeholder: 'Post, Reel, Story…', oninput: e => { types[ch] = e.target.value; } })),
+  ])) : []));
   const title = el('input', { value: p ? p.title : '', placeholder: 'e.g. Thank-you post with mural photos', maxlength: 200 });
   const details = el('textarea', { rows: 4, placeholder: 'Key message, who it’s for, call to action, anything to include' }); details.value = p ? p.notes : '';
   const date = el('input', { type: 'date', value: p ? p.date : '' });
   const files = el('input', { type: 'url', value: p ? p.files : '', placeholder: 'https://drive.google.com/…' });
   const pick = el('div', { class: 'pick', role: 'group', 'aria-label': 'Channels' }, S.D.channels.map(ch =>
-    el('button', { type: 'button', 'aria-pressed': chans.has(ch) ? 'true' : 'false', text: ch, onclick: e => { chans.has(ch) ? chans.delete(ch) : chans.add(ch); e.target.setAttribute('aria-pressed', chans.has(ch) ? 'true' : 'false'); } })));
+    el('button', { type: 'button', 'aria-pressed': chans.has(ch) ? 'true' : 'false', text: ch, onclick: e => { chans.has(ch) ? chans.delete(ch) : chans.add(ch); e.target.setAttribute('aria-pressed', chans.has(ch) ? 'true' : 'false'); drawPerCh(); } })));
   const err = errBox();
   let close;
   const save = b => {
-    const s = { title: title.value, details: details.value, date: date.value, files: files.value, channels: Array.from(chans) };
-    (p ? act(null, 'editSuggestion', [p.id, s], 'Suggestion saved') : act(null, 'suggest', [c.tag, s], 'Suggestion sent to the comms team'))
+    const s = { mode, title: title.value, details: details.value, date: date.value, files: files.value, channels: Array.from(chans), links, types };
+    (p ? act(null, 'editSuggestion', [p.id, s], 'Saved') : act(null, 'suggest', [c.tag, s], mode === 'report' ? 'Post reported to the comms team' : 'Suggestion sent to the comms team'))
       .then(() => close()).catch(e => { showErr(err, e.message); lock(b, false); });
   };
-  close = modal(p ? 'Edit suggestion' : 'Suggest a post', [
-    el('div', { class: 'small muted', text: 'For: ' + c.name }),
-    field('What’s the post about?', title), field('Details', details), field('When (roughly)', date),
-    el('div', { class: 'small muted', text: 'Where (pick any; leave all off if you’re not sure)' }), pick,
+  const isR = mode === 'report';
+  close = modal(p ? (isR ? 'Edit reported post' : 'Edit suggestion') : (isR ? 'Report a post' : 'Suggest a post'), [
+    el('div', { class: 'row', style: 'justify-content:space-between' }, [el('span', { class: 'small muted', text: 'For: ' + c.name }),
+      el('button', { class: 'btn link small', type: 'button', text: isR ? 'Switch to suggest a post' : 'Already posted it? Switch to report a post', onclick: () => { close(); openSuggest(c, p, isR ? 'suggest' : 'report'); } })]),
+    isR ? el('p', { class: 'small muted', style: 'margin:0', text: 'For a post that’s already out (e.g. posted straight from Meta). Once the comms team accepts it, it goes into Socials as out, and the next import adds its figures.' }) : '',
+    field(isR ? 'Post title or first line' : 'What’s the post about?', title), field(isR ? 'Notes' : 'Details', details), field(isR ? 'Date it went out' : 'When (roughly)', date),
+    el('div', { class: 'small muted', text: isR ? 'Where it went out' : 'Where (pick any; leave all off if you’re not sure)' }), pick, perCh,
     field('Photos / files / link (optional)', files), err,
-    saveRow(p ? 'Save' : 'Send suggestion', save, () => close()),
+    el('datalist', { id: 'kpc-types' }, ['Post', 'Reel', 'Story', 'Carousel', 'Video Post', 'Shorts', 'Collab', 'Article', 'Newsletter', 'Blog'].map(v => el('option', { value: v }))),
+    saveRow(p ? 'Save' : isR ? 'Send report' : 'Send suggestion', save, () => close()),
   ]);
+  drawPerCh();
 }
 
 function openProgress(c, kpiId) {
@@ -936,7 +949,7 @@ function inboxView() {
     const read = () => { if (i.isNew) mark([i.id], 'read'); };
     if (i.kind === 'suggest') {
       const p = i.p;
-      main = [el('b', { text: (i.mine ? 'You' : p.by ? p.by.name : 'Someone') + ' suggested a post' }), ' for ' + cName(p.campaigns[0]), el('div', { class: 'small muted', text: '“' + p.title + '”' + (p.date ? ' · ' + fmtDate(p.date) : '') + (p.channels.length ? ' · ' + p.channels.map(c => c.channel || 'channel tbc').join(', ') : '') })];
+      main = [el('b', { text: (i.mine ? 'You' : p.by ? p.by.name : 'Someone') + (p.reported ? ' reported a post' : ' suggested a post') }), ' for ' + cName(p.campaigns[0]), el('div', { class: 'small muted', text: '“' + p.title + '”' + (p.date ? ' · ' + fmtDate(p.date) : '') + (p.channels.length ? ' · ' + p.channels.map(c => c.channel || 'channel tbc').join(', ') : '') })];
       if (S.me.comms) acts = [el('button', { class: 'btn sm pri', type: 'button', text: 'Accept', onclick: e => act(e.target, 'acceptSuggestion', [p.id], 'Accepted: it’s in Socials as Not Started').then(() => mark([i.id], 'done')) }),
         el('button', { class: 'btn sm', type: 'button', text: 'Not now', onclick: e => act(e.target, 'declineSuggestion', [p.id], 'Declined').then(() => mark([i.id], 'done')) })];
       acts.push(el('button', { class: 'btn sm', type: 'button', onclick: () => { read(); openPost(p); } }, [L('chat', 'Comment')]));
