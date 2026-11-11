@@ -205,10 +205,11 @@ const ICONS = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   exit: '<path d="M10 4H4v16h6M14 8l4 4-4 4M18 12H9"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
-  megaphone: '<path d="M3 10v4h3l7 4V6L6 10z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>',
+  megaphone: '<path d="M3 9.5v4h3l8 4.5V5L6 9.5z"/><path d="M6.5 13.5l1.6 6h2.6l-1.4-5.3"/><path d="M17 8.5a4 4 0 0 1 0 6M19.5 6a7.5 7.5 0 0 1 0 11"/>',
   notebook: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v18M12 8h4M12 12h4"/>',
-  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
-  targetArrow: '<circle cx="11" cy="13" r="8"/><circle cx="11" cy="13" r="4"/><path d="M11 13l9-9M16 4h4v4"/>',
+  target: '<g stroke-width="1.25"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/></g>',
+  targetArrow: '<g stroke-width="1.25"><circle cx="10.5" cy="13.5" r="8"/><circle cx="10.5" cy="13.5" r="4.8"/><circle cx="10.5" cy="13.5" r="1.6"/></g><path stroke-width="1.7" d="M10.5 13.5L20 4"/><path stroke-width="1.5" d="M20 4h2.5M20 4V1.5M18.3 5.7h2.5M18.3 5.7V3.2"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   unmerge: '<path d="M12 21v-7M12 14L6 8M12 14l6-6M6 8V4M18 8V4M4 6l2-2 2 2M16 6l2-2 2 2"/>',
   merge: '<path d="M6 3v4l6 6 6-6V3M12 13v8M9 18l3 3 3-3"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
@@ -267,7 +268,7 @@ const authed = (fn, ...args) => call(fn, S.session, ...args).catch(e => { if (/s
 const S = { session: store.get('Session') || '', me: null, D: null, appUrl: '', route: { page: 'campaigns' }, loadErr: '', refreshing: false,
   cf: store.get('CampFilter') || '', q: '', sq: '', pf: 'all', sv: store.get('SocView') || 'cal', range: 'fy', from: '', to: '', sch: '', sst: '', sown: '', scamp: '', month: '',
   unmerged: new Set(), ibox: 'todo' };
-try { const c = JSON.parse(store.get('Cache') || 'null'); if (c && S.session) { S.me = c.me; S.D = c.data; S.appUrl = c.appUrl || ''; } } catch (e) {}
+try { const c = JSON.parse(store.get('Cache') || 'null'); if (c && S.session) { S.me = c.me; S.D = c.data; S.appUrl = c.appUrl || ''; S.feedback = c.feedback || []; } } catch (e) {}
 
 function readRoute() {
   const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
@@ -290,7 +291,7 @@ function refresh(quiet) {
   if (!S.session) return Promise.resolve();
   S.refreshing = true;
   return authed('load').then(r => {
-    S.me = r.me; S.D = r.data; S.appUrl = r.appUrl || ''; S.loadErr = '';
+    S.me = r.me; S.D = r.data; S.appUrl = r.appUrl || ''; S.feedback = r.feedback || []; S.loadErr = '';
     store.set('Cache', JSON.stringify(r));
   }).catch(e => { S.loadErr = e.message; if (!quiet) toast(e.message); })
     .finally(() => { S.refreshing = false; render(); });
@@ -319,6 +320,7 @@ function targetTotal(tag) { const t = postTargets(tag); if (!t) return null; ret
 const rowsOf = posts => posts.reduce((a, p) => a.concat(p.channels.map(c => ({ p, c }))), []);
 /** Inbox item ids. */
 const itemId = { s: p => 'S:' + p.id, c: c => 'C:' + c.id, e: e => 'E:' + e.id };
+const mineBy = x => !!(x && x.by && S.me && x.by.id === S.me.id);
 const BASE = ch => (ch || '').replace(/\s*Boost$/i, '');
 const STAGE_LABEL = { suggested: 'Suggested', idea: 'Idea', planned: 'Planned', hold: 'On hold', scheduled: 'Scheduled', figures: 'Out, waiting for figures', out: 'Out' };
 const isOut = s => s === 'out' || s === 'figures';
@@ -452,13 +454,13 @@ function campaignView(tag) {
     el('h1', { text: c.name }),
     el('div', { class: 'muted small', text: [c.tag, c.lead ? 'Lead: ' + c.lead : '', c.comms ? 'Comms: ' + c.comms : '', di.text].filter(Boolean).join(' · ') }),
     el('div', { class: 'bar' }, el('i', { style: 'width:' + di.pct + '%' })),
-    c.brief ? el('p', { text: c.brief }) : '',
+    c.brief ? el('p', { text: c.brief, style: 'margin-bottom:4px' }) : '',
+    c.folder ? el('p', { style: 'margin:0 0 10px' }, el('a', { href: c.folder, target: '_blank', rel: 'noopener', style: 'display:inline-flex;gap:6px;align-items:center' }, [ico('folder'), 'Campaign folder ↗'])) : '',
     el('div', { class: 'row' }, [
       edit ? el('button', { class: 'btn sug', type: 'button', title: 'Suggest a post', 'aria-label': 'Suggest a post', onclick: () => openSuggest(c) }, IW('megaphone', 'Suggest a post')) : '',
       edit ? el('button', { class: 'btn', type: 'button', title: 'Edit KPIs', 'aria-label': 'Edit KPIs', onclick: () => openKpis(c) }, IW('target', 'Edit KPIs')) : '',
       edit && ks.length ? el('button', { class: 'btn', type: 'button', title: 'Add KPI progress', 'aria-label': 'Add KPI progress', onclick: () => openProgress(c) }, IW('targetArrow', 'Add KPI progress')) : '',
       edit ? el('button', { class: 'btn', type: 'button', title: 'Brief & folder', 'aria-label': 'Brief & folder', onclick: () => openBrief(c) }, IW('notebook', 'Brief & folder')) : '',
-      c.folder ? el('a', { class: 'btn', href: c.folder, target: '_blank', rel: 'noopener' }, IW('out', 'Folder')) : '',
       el('button', { class: 'btn', type: 'button', title: 'Share link', 'aria-label': 'Share link', onclick: () => shareLink(c) }, IW('share', 'Share link')),
     ]),
   ]);
@@ -792,11 +794,11 @@ function openPhone() {
 
 function openFeedback() {
   if (!S.session) { toast('Sign in first, then send feedback.'); return; }
-  const t = el('textarea', { rows: 5, placeholder: 'Something broken, confusing or missing? What would help?' });
+  const t = el('textarea', { rows: 5, placeholder: 'e.g. The Socials calendar is hard to read on my phone… / It would help if…' });
   const err = errBox();
   let close;
-  const save = b => { authed('feedback', t.value, S.route.page + (S.route.tag ? ' ' + S.route.tag : '')).then(() => { toast('Thanks! Sent to Dan.'); close(); }).catch(x => { showErr(err, x.message); lock(b, false); }); };
-  close = modal('Feedback', [t, err, saveRow('Send', save, () => close())]);
+  const save = b => { authed('feedback', t.value, S.route.page + (S.route.tag ? ' ' + S.route.tag : '')).then(() => { toast('Thanks! It’s in the comms team’s Inbox.'); close(); return refresh(true); }).catch(x => { showErr(err, x.message); lock(b, false); }); };
+  close = modal('Improve this app', [el('p', { class: 'small muted', text: 'Found a bug, something confusing, or an idea to make KP Comms better? Tell us here. It lands in the comms team’s Inbox (yours too, if you’re on it) as a to-do.' }), field('What happened, or what would help?', t), err, saveRow('Send', save, () => close())]);
 }
 
 /* ------------------------------------------------ socials (team view) */
@@ -915,11 +917,12 @@ function inboxItems() {
   S.D.posts.filter(p => p.stage === 'suggested').forEach(p => { if (p.campaigns.some(mineC)) items.push({ id: itemId.s(p), at: p.suggestedOn, kind: 'suggest', p }); });
   S.D.comments.forEach(c => { if (mineC(c.campaign) || myPosts.has(c.post)) items.push({ id: itemId.c(c), at: c.at, kind: 'comment', c }); });
   S.D.progress.forEach(e => { if (mineC(e.campaign) && e.at && e.by) items.push({ id: itemId.e(e), at: e.at, kind: 'kpi', e }); });
+  (S.feedback || []).forEach(fb => items.push({ id: fb.id, at: fb.at, kind: 'feedback', f: fb }));
   const cut = new Date(Date.now() - 60 * 86400000).toISOString();
   return items.filter(i => i.at && (i.kind === 'suggest' || i.at >= cut))
-    .filter(i => !((i.p && i.p.by && i.p.by.id === S.me.id) || (i.c && i.c.by && i.c.by.id === S.me.id) || (i.e && i.e.by && i.e.by.id === S.me.id)))
+    .map(i => Object.assign(i, { mine: mineBy(i.p) || mineBy(i.c) || mineBy(i.e) || mineBy(i.f) }))
     .map(i => Object.assign(i, { state: (S.me.inbox || {})[i.id] || '' }))
-    .map(i => Object.assign(i, { isNew: !i.state }))
+    .map(i => Object.assign(i, { isNew: !i.state && !i.mine }))
     .sort((a, b) => b.at.localeCompare(a.at));
 }
 function markSeen() {}
@@ -933,17 +936,19 @@ function inboxView() {
     const read = () => { if (i.isNew) mark([i.id], 'read'); };
     if (i.kind === 'suggest') {
       const p = i.p;
-      main = [el('b', { text: (p.by ? p.by.name : 'Someone') + ' suggested a post' }), ' for ' + cName(p.campaigns[0]), el('div', { class: 'small muted', text: '“' + p.title + '”' + (p.date ? ' · ' + fmtDate(p.date) : '') + (p.channels.length ? ' · ' + p.channels.map(c => c.channel || 'channel tbc').join(', ') : '') })];
+      main = [el('b', { text: (i.mine ? 'You' : p.by ? p.by.name : 'Someone') + ' suggested a post' }), ' for ' + cName(p.campaigns[0]), el('div', { class: 'small muted', text: '“' + p.title + '”' + (p.date ? ' · ' + fmtDate(p.date) : '') + (p.channels.length ? ' · ' + p.channels.map(c => c.channel || 'channel tbc').join(', ') : '') })];
       if (S.me.comms) acts = [el('button', { class: 'btn sm pri', type: 'button', text: 'Accept', onclick: e => act(e.target, 'acceptSuggestion', [p.id], 'Accepted: it’s in Socials as Not Started').then(() => mark([i.id], 'done')) }),
         el('button', { class: 'btn sm', type: 'button', text: 'Not now', onclick: e => act(e.target, 'declineSuggestion', [p.id], 'Declined').then(() => mark([i.id], 'done')) })];
       acts.push(el('button', { class: 'btn sm', type: 'button', onclick: () => { read(); openPost(p); } }, [L('chat', 'Comment')]));
     } else if (i.kind === 'comment') {
       const p = S.D.posts.find(x => x.id === i.c.post);
-      main = [el('b', { text: (i.c.by ? i.c.by.name : '') + ' commented' }), p ? ' on “' + p.title + '”' : '', el('div', { class: 'small muted', text: '“' + i.c.text + '”' })];
+      main = [el('b', { text: (i.mine ? 'You' : i.c.by ? i.c.by.name : '') + ' commented' }), p ? ' on “' + p.title + '”' : '', el('div', { class: 'small muted', text: '“' + i.c.text + '”' })];
       if (p) acts = [el('button', { class: 'btn sm', type: 'button', text: 'Reply', onclick: () => { read(); openPost(p); } })];
+    } else if (i.kind === 'feedback') {
+      main = [el('b', { text: (i.mine ? 'You' : i.f.by.name) + ' sent app feedback' }), i.f.page ? ' (from ' + i.f.page + ')' : '', el('div', { class: 'small muted', text: '“' + i.f.text + '”' })];
     } else {
       const k = S.D.kpis.find(x => x.id === i.e.kpi) || { name: 'a KPI', type: 'Count' };
-      main = [el('b', { text: (i.e.by ? i.e.by.name : '') + ' updated ' + k.name }), ' for ' + cName(i.e.campaign) + ': ' + (k.type === 'Milestone' ? (i.e.value ? 'ticked' : 'unticked') : (i.e.mode === 'total' ? '= ' : '+') + kpiFmt(k, i.e.value)), i.e.note ? el('div', { class: 'small muted', text: '“' + i.e.note + '”' }) : ''];
+      main = [el('b', { text: (i.mine ? 'You' : i.e.by ? i.e.by.name : '') + ' updated ' + k.name }), ' for ' + cName(i.e.campaign) + ': ' + (k.type === 'Milestone' ? (i.e.value ? 'ticked' : 'unticked') : (i.e.mode === 'total' ? '= ' : '+') + kpiFmt(k, i.e.value)), i.e.note ? el('div', { class: 'small muted', text: '“' + i.e.note + '”' }) : ''];
       acts = [el('button', { class: 'btn sm', type: 'button', text: 'Open campaign', onclick: () => { read(); go('campaign', i.e.campaign); } })];
     }
     acts.push(i.state === 'done'
@@ -955,7 +960,7 @@ function inboxView() {
   const unread = todo.filter(i => i.isNew);
   return el('section', {}, [
     el('h1', { text: 'Inbox' }),
-    el('p', { class: 'muted', text: (S.me.comms ? 'Everything on all campaigns' : 'Everything on your campaigns and on posts you’ve commented on') + ': suggestions, comments and KPI updates. Read it, act on it, archive it. Your inbox is your own: archiving here doesn’t change anyone else’s.' }),
+    el('p', { class: 'muted', text: (S.me.comms ? 'Everything on all campaigns, plus app feedback' : 'Everything on your campaigns and on posts you’ve commented on') + ': suggestions, comments and KPI updates, including your own (as reminders). Read it, act on it, archive it. Your inbox is your own: archiving here doesn’t change anyone else’s.' }),
     el('div', { class: 'filters' }, [
       el('button', { type: 'button', 'aria-pressed': S.ibox !== 'done' ? 'true' : 'false', onclick: () => { S.ibox = 'todo'; render(); } }, 'To do (' + todo.length + ')'),
       el('button', { type: 'button', 'aria-pressed': S.ibox === 'done' ? 'true' : 'false', onclick: () => { S.ibox = 'done'; render(); } }, 'Archived (' + done.length + ')'),
