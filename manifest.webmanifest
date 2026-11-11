@@ -1,0 +1,17 @@
+{
+  "name": "KP Comms",
+  "short_name": "KP Comms",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f4f5",
+  "theme_color": "#f2f4f5",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
