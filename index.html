@@ -209,6 +209,7 @@ const ICONS = {
   notebook: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v18M12 8h4M12 12h4"/>',
   target: '<g stroke-width="1.25"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/></g>',
   targetArrow: '<g stroke-width="1.25"><circle cx="10.5" cy="13.5" r="8"/><circle cx="10.5" cy="13.5" r="4.8"/><circle cx="10.5" cy="13.5" r="1.6"/></g><path stroke-width="1.7" d="M10.5 13.5L20 4"/><path stroke-width="1.5" d="M20 4h2.5M20 4V1.5M18.3 5.7h2.5M18.3 5.7V3.2"/>',
+  flask: '<path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   unmerge: '<path d="M12 21v-7M12 14L6 8M12 14l6-6M6 8V4M18 8V4M4 6l2-2 2 2M16 6l2-2 2 2"/>',
   merge: '<path d="M6 3v4l6 6 6-6V3M12 13v8M9 18l3 3 3-3"/>',
@@ -456,6 +457,7 @@ function campaignView(tag) {
     el('div', { class: 'bar' }, el('i', { style: 'width:' + di.pct + '%' })),
     c.brief ? el('p', { text: c.brief, style: 'margin-bottom:4px' }) : '',
     c.folder ? el('p', { style: 'margin:0 0 10px' }, el('a', { href: c.folder, target: '_blank', rel: 'noopener', style: 'display:inline-flex;gap:6px;align-items:center' }, [ico('folder'), 'Campaign folder ↗'])) : '',
+    c.shiftLab ? el('p', { style: 'margin:0 0 10px' }, el('a', { href: c.shiftLab, target: '_blank', rel: 'noopener', style: 'display:inline-flex;gap:6px;align-items:center' }, [ico('flask'), 'Shift Lab plan ↗'])) : '',
     el('div', { class: 'row' }, [
       edit ? el('button', { class: 'btn sug', type: 'button', title: 'Suggest a post', 'aria-label': 'Suggest a post', onclick: () => openSuggest(c) }, IW('megaphone', 'Suggest a post')) : '',
       edit ? el('button', { class: 'btn', type: 'button', title: 'Edit KPIs', 'aria-label': 'Edit KPIs', onclick: () => openKpis(c) }, IW('target', 'Edit KPIs')) : '',
@@ -751,10 +753,11 @@ function openKpis(c) {
 function openBrief(c) {
   const brief = el('textarea', { rows: 5, placeholder: 'What the campaign is for, who it’s for, key dates and messages' }); brief.value = c.brief || '';
   const folder = el('input', { type: 'url', value: c.folder || '', placeholder: 'https://drive.google.com/… (photos, logos, copy)' });
+  const shiftLab = el('input', { type: 'url', value: c.shiftLab || '', placeholder: 'https://script.google.com/macros/s/…?plan=…' });
   const err = errBox();
   let close;
-  const save = b => { act(null, 'saveCampaignInfo', [c.tag, { brief: brief.value, folder: folder.value }], 'Saved').then(() => close()).catch(x => { showErr(err, x.message); lock(b, false); }); };
-  close = modal('Brief & folder', [field('Brief', brief), field('Shared folder link', folder), err, saveRow('Save', save, () => close())]);
+  const save = b => { act(null, 'saveCampaignInfo', [c.tag, { brief: brief.value, folder: folder.value, shiftLab: shiftLab.value }], 'Saved').then(() => close()).catch(x => { showErr(err, x.message); lock(b, false); }); };
+  close = modal('Brief & folder', [field('Brief', brief), field('Shared folder link', folder), field('Shift Lab plan link (optional)', shiftLab, 'Open the plan in Shift Lab and copy its address (or its Share link).'), err, saveRow('Save', save, () => close())]);
 }
 
 function openPost(p) {
