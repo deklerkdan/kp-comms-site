@@ -312,9 +312,9 @@ function signOut() { const s = S.session; signedOut(); call('signOut', s).catch(
 
 /* ------------------------------------------------ derived data */
 const camp = tag => (S.D.campaigns || []).find(c => c.tag === tag);
-function canEdit(c) { return !!(S.me && c && (S.me.comms || c.leadId === S.me.id || (c.memberIds || []).includes(S.me.id) || (S.me.campaigns || []).includes(c.tag))); }
+function canEdit(c) { return !!(S.me && c && (S.me.comms || (c.peopleIds || []).includes(S.me.id) || (c.memberIds || []).includes(S.me.id) || (S.me.campaigns || []).includes(c.tag))); }
 function isFinished(c) { return /complete|finished|closed/i.test(c.status) || (c.end && c.end < todayIso()); }
-function isMine(c) { return S.me && (c.leadId === S.me.id || (c.memberIds || []).includes(S.me.id) || (S.me.campaigns || []).includes(c.tag)); }
+function isMine(c) { return S.me && ((c.peopleIds || []).includes(S.me.id) || (c.memberIds || []).includes(S.me.id) || (S.me.campaigns || []).includes(c.tag)); }
 const STAGE_RANK = ['suggested', 'idea', 'planned', 'hold', 'scheduled', 'figures', 'out'];
 function postsOf(tag) {
   return (S.D.posts || []).map(p => {
@@ -416,7 +416,7 @@ function campaignsView() {
   if (f === 'mine' && !mine.length) f = 'active';
   const q = S.q.trim().toLowerCase();
   const list = all.filter(c => (f === 'mine' ? isMine(c) && !isFinished(c) : f === 'finished' ? isFinished(c) : !isFinished(c)))
-    .filter(c => !q || (c.name + ' ' + c.tag + ' ' + c.lead).toLowerCase().includes(q))
+    .filter(c => !q || (c.name + ' ' + c.tag + ' ' + (c.people || '')).toLowerCase().includes(q))
     .sort((a, b) => (a.end || '9').localeCompare(b.end || '9'));
   const setF = v => { S.cf = v; store.set('CampFilter', v); render(); };
   const search = el('input', { type: 'search', placeholder: 'Search…', value: S.q, 'aria-label': 'Search campaigns', oninput: e => { S.q = e.target.value; const pos = e.target.selectionStart; render(); const s = document.querySelector('input[type=search]'); if (s) { s.focus(); s.setSelectionRange(pos, pos); } } });
@@ -429,7 +429,7 @@ function campaignsView() {
       search,
     ]),
     list.length ? el('div', { class: 'grid' }, list.map(campaignCard)) : el('p', { class: 'muted', text: 'No campaigns here.' }),
-    S.me.comms ? el('p', { class: 'note', text: 'New campaigns: add a row on the Campaigns tab of the KP Socials Tracker sheet (with the lead’s email). It shows up here straight away.' }) : '',
+    S.me.comms ? el('p', { class: 'note', text: 'New campaigns: add a row on the Campaigns tab of the KP Socials Tracker sheet, with People and People emails (comma-separated) for everyone who works on it. It shows up here straight away.' }) : '',
   ]);
 }
 function campaignCard(c) {
@@ -440,7 +440,7 @@ function campaignCard(c) {
   const cardKpis = kpisOf(c.tag).filter(k => k.onCard && k.type !== 'Boost' && k.type !== 'Posts').slice(0, 2);
   return el('button', { class: 'card ccard', type: 'button', onclick: () => go('campaign', c.tag) }, [
     el('div', { class: 'row', style: 'justify-content:space-between' }, [el('b', { text: c.name }), el('span', { class: 'chip ' + (isFinished(c) ? 'st-planned' : 'st-scheduled'), text: isFinished(c) ? 'Finished' : (c.status || 'Active') })]),
-    el('div', { class: 'small muted', text: (c.lead ? 'Lead: ' + c.lead + ' · ' : '') + di.text }),
+    el('div', { class: 'small muted', text: (c.people ? 'People: ' + c.people + ' · ' : '') + di.text }),
     el('div', { class: 'bar' }, el('i', { style: 'width:' + di.pct + '%' })),
     el('div', { class: 'stats' }, [
       el('span', {}, [el('b', { text: out + ' / ' + (tgt == null ? 'NA' : tgt) }), 'posts out / target']),
@@ -464,7 +464,7 @@ function campaignView(tag) {
   const head = el('div', {}, [
     el('button', { class: 'btn link', type: 'button', text: '← Campaigns', onclick: () => go('campaigns') }),
     el('h1', { text: c.name }),
-    el('div', { class: 'muted small', text: [c.tag, c.lead ? 'Lead: ' + c.lead : '', c.comms ? 'Comms: ' + c.comms : '', di.text].filter(Boolean).join(' · ') }),
+    el('div', { class: 'muted small', text: [c.tag, c.people ? 'People: ' + c.people : '', di.text].filter(Boolean).join(' · ') }),
     el('div', { class: 'bar' }, el('i', { style: 'width:' + di.pct + '%' })),
     c.brief ? el('p', { text: c.brief, style: 'margin-bottom:4px' }) : '',
     c.folder ? el('p', { style: 'margin:0 0 10px;display:inline-block;margin-right:16px' }, el('a', { href: c.folder, target: '_blank', rel: 'noopener', title: 'Campaign folder', 'aria-label': 'Campaign folder', style: 'display:inline-flex;gap:6px;align-items:center' }, labelMode === 'icons' ? [ico('folder')] : ['Campaign folder ↗'])) : '',
