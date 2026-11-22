@@ -343,11 +343,13 @@ function boostKpi(tag) { return kpisOf(tag).find(k => k.type === 'Boost') || { i
 function kpiValue(k) {
   if (k.type === 'Boost') return boostSpend(postsOf(k.campaign));
   const es = (S.D.progress || []).filter(e => e.kpi === k.id).sort((a, b) => (a.date + a.at).localeCompare(b.date + b.at));
+  if (k.type === 'Qualitative') return { v: es.length, last: es[es.length - 1], es: es.slice().reverse() };
   let v = 0;
   es.forEach(e => { if (e.mode === 'total' || e.mode === 'done') v = e.value || 0; else v += e.value || 0; });
   return { v, last: es[es.length - 1] };
 }
-function kpiFmt(k, v) { return k.type === 'Money' || k.type === 'Boost' ? money(v) : k.type === 'Percent' ? (v == null ? '—' : v + '%') : k.type === 'Hours' ? n0(v) + ' h' : n0(v); }
+const qCount = n => n + (n === 1 ? ' entry' : ' entries');
+function kpiFmt(k, v) { return k.type === 'Qualitative' ? qCount(v || 0) : k.type === 'Money' || k.type === 'Boost' ? money(v) : k.type === 'Percent' ? (v == null ? '—' : v + '%') : k.type === 'Hours' ? n0(v) + ' h' : n0(v); }
 function daysInfo(c) {
   const t = todayIso();
   if (!c.start || !c.end) return { pct: 0, text: c.start ? 'from ' + fmtDate(c.start) : 'no dates yet' };
@@ -421,7 +423,8 @@ function campaignsView() {
   const setF = v => { S.cf = v; store.set('CampFilter', v); render(); };
   const search = el('input', { type: 'search', placeholder: 'Search…', value: S.q, 'aria-label': 'Search campaigns', oninput: e => { S.q = e.target.value; const pos = e.target.selectionStart; render(); const s = document.querySelector('input[type=search]'); if (s) { s.focus(); s.setSelectionRange(pos, pos); } } });
   return el('section', {}, [
-    el('h1', { text: 'Campaigns' }),
+    el('div', { class: 'row', style: 'justify-content:space-between;align-items:center' }, [el('h1', { text: 'Campaigns' }),
+      el('button', { class: 'btn pri', type: 'button', title: 'New campaign', 'aria-label': 'New campaign', onclick: () => openNewCampaign() }, IW('plus', 'New campaign'))]),
     el('div', { class: 'filters', role: 'group', 'aria-label': 'Which campaigns' }, [
       mine.length ? el('button', { type: 'button', 'aria-pressed': f === 'mine' ? 'true' : 'false', onclick: () => setF('mine') }, 'My campaigns (' + mine.length + ')') : '',
       el('button', { type: 'button', 'aria-pressed': f === 'active' ? 'true' : 'false', onclick: () => setF('active') }, 'Active (' + all.filter(c => !isFinished(c)).length + ')'),
@@ -429,7 +432,7 @@ function campaignsView() {
       search,
     ]),
     list.length ? el('div', { class: 'grid' }, list.map(campaignCard)) : el('p', { class: 'muted', text: 'No campaigns here.' }),
-    S.me.comms ? el('p', { class: 'note', text: 'New campaigns: add a row on the Campaigns tab of the KP Socials Tracker sheet, with People and People emails (comma-separated) for everyone who works on it. It shows up here straight away.' }) : '',
+    el('p', { class: 'note', text: 'Can’t see a campaign? Add it with “New campaign”. You’re added to it automatically, and you can list everyone else under People emails. It can also still be added as a row on the Campaigns tab of the KP Socials Tracker.' }),
   ]);
 }
 function campaignCard(c) {
@@ -445,7 +448,7 @@ function campaignCard(c) {
     el('div', { class: 'stats' }, [
       el('span', {}, [el('b', { text: out + ' / ' + (tgt == null ? 'NA' : tgt) }), 'posts out / target']),
       el('span', {}, [el('b', { text: k1(sumM(ps, 'reach')) }), 'reach']),
-    ].concat(cardKpis.map(k => { const v = kpiValue(k).v; return el('span', {}, [el('b', { text: k.type === 'Milestone' ? (v ? '✓' : '—') : kpiFmt(k, v) + (k.target != null ? ' / ' + kpiFmt(k, k.target) : '') }), k.name]); }))),
+    ].concat(cardKpis.map(k => { const v = kpiValue(k).v; return el('span', {}, [el('b', { text: k.type === 'Qualitative' ? String(v) : k.type === 'Milestone' ? (v ? '✓' : '—') : kpiFmt(k, v) + (k.target != null ? ' / ' + kpiFmt(k, k.target) : '') }), k.name]); }))),
     el('div', {}, [sug ? el('span', { class: 'chip st-suggested', text: sug + ' suggestion' + (sug > 1 ? 's' : '') }) : '', cm ? el('span', { class: 'chip', text: cm + ' comment' + (cm > 1 ? 's' : '') }) : '',
       !kpisOf(c.tag).some(k => k.type !== 'Boost' && k.type !== 'Posts') && canEdit(c) && !isFinished(c) ? el('span', { class: 'chip st-figures', text: 'Set a KPI' }) : '']),
   ]);
@@ -484,9 +487,9 @@ function campaignView(tag) {
     const share = k.target ? Math.min(100, Math.round(v / k.target * 100)) : 0;
     return el('div', { class: 'tile' }, [
       el('div', { class: 'muted small', text: k.name }),
-      k.type === 'Milestone' ? el('div', { class: 'big', text: v ? '✓ Done' : 'Not yet' }) : el('div', { class: 'big' }, [kpiFmt(k, v), k.target != null ? el('span', { class: 'muted small', text: ' / ' + kpiFmt(k, k.target) }) : '']),
+      k.type === 'Qualitative' ? el('div', { class: 'big', text: qCount(v) }) : k.type === 'Milestone' ? el('div', { class: 'big', text: v ? '✓ Done' : 'Not yet' }) : el('div', { class: 'big' }, [kpiFmt(k, v), k.target != null ? el('span', { class: 'muted small', text: ' / ' + kpiFmt(k, k.target) }) : '']),
       k.target && k.type !== 'Milestone' ? el('div', { class: 'bar k' + (v > k.target && (k.type === 'Money') ? ' over' : '') }, el('i', { style: 'width:' + share + '%' })) : '',
-      last ? el('div', { class: 'small muted', text: 'Last: ' + (k.type === 'Milestone' ? (last.value ? 'ticked' : 'unticked') : (last.mode === 'total' ? '= ' : '+') + kpiFmt(k, last.value)) + ' on ' + fmtDate(last.date) + (last.by ? ' (' + last.by.name + ')' : '') }) : el('div', { class: 'small muted', text: 'Nothing entered yet' }),
+      k.type === 'Qualitative' ? (last ? el('div', { class: 'small', text: '“' + (last.note.length > 120 ? last.note.slice(0, 117) + '…' : last.note) + '”' }) : el('div', { class: 'small muted', text: 'Nothing entered yet' })) : last ? el('div', { class: 'small muted', text: 'Last: ' + (k.type === 'Milestone' ? (last.value ? 'ticked' : 'unticked') : (last.mode === 'total' ? '= ' : '+') + kpiFmt(k, last.value)) + ' on ' + fmtDate(last.date) + (last.by ? ' (' + last.by.name + ')' : '') }) : el('div', { class: 'small muted', text: 'Nothing entered yet' }),
       k.link ? el('a', { class: 'small', href: k.link, target: '_blank', rel: 'noopener' }, [(k.linkLabel || 'Check the numbers') + ' ↗']) : '',
     ]);
   });
@@ -504,11 +507,12 @@ function campaignView(tag) {
   const rows = {};
   ps.forEach(p => p.channels.forEach(ch => {
     const b = BASE(ch.channel) || 'No channel yet';
-    const r = rows[b] || (rows[b] = { out: 0, reach: null, views: null, eng: null, clicks: null, spend: null });
+    const r = rows[b] || (rows[b] = { out: 0, reach: null, views: null, eng: null, clicks: null, spend: null, signups: null, donations: null, donated: null });
     if (!isOut(ch.stage)) return;
     r.out++;
     const add = (k, v) => { if (v != null) r[k] = (r[k] || 0) + v; };
     if (b === 'Newsletter') { add('reach', ch.m.recipients); add('views', ch.m.uOpens); add('clicks', ch.m.uClicks); }
+    else if (b === 'Website') { add('reach', ch.m.reach); add('views', ch.m.impr); add('eng', ch.m.signups); add('clicks', ch.m.clicks); add('signups', ch.m.signups); add('donations', ch.m.donations); add('donated', ch.m.donated); }
     else { add('reach', ch.m.reach); add('views', ch.m.impr); add('eng', ch.m.eng); add('clicks', ch.m.clicks); }
     add('spend', ch.m.spend);
   }));
@@ -524,6 +528,8 @@ function campaignView(tag) {
     tr.push(el('tr', {}, [el('td', { text: 'Google Ads' }), el('td', { text: '—' }), el('td', { text: '—' }), el('td', { text: n0(s('impr')) }), el('td', { text: n0(s('conv')) + ' conv.' }), el('td', { text: n0(s('clicks')) }), el('td', { text: money(s('cost')) })]));
   }
   const extra = (S.D.channelStats || []).filter(x => x.campaign === tag);
+  const web = rows.Website;
+  const webNote = web && (web.views != null || web.donations) ? 'Website (from GA4, each page counted from the day it went live): ' + n0(web.views) + ' page views, ' + n0(web.reach) + ' visitors, ' + n0(web.clicks) + ' Humanitix ticket clicks, ' + n0(web.signups) + ' form or newsletter sign-ups' + (web.donations ? ', ' + n0(web.donations) + ' online donations (' + money(web.donated || 0) + ')' : '') + '.' : '';
 
   /* posts */
   const counts = { all: ps.length, suggested: 0, planned: 0, scheduled: 0, out: 0 };
@@ -546,7 +552,9 @@ function campaignView(tag) {
     ]),
     tr.length ? el('p', { class: 'small muted', style: 'margin:10px 0 4px', text: 'Opens / views: newsletter unique opens (with open rate), social post views, blog or web page views. Targets come from Edit KPIs; NA = none set.' }) : '',
     tr.length ? el('div', { class: 'tablewrap' }, el('table', {}, [el('tr', {}, ['Channel', 'Out / target', 'Reach / sent', 'Opens / views', 'Engagements', 'Clicks', 'Boost spend'].map(h => el('th', { text: h })))].concat(tr))) : '',
+    webNote ? el('p', { class: 'small muted', style: 'margin:6px 0 0', text: webNote }) : '',
     extra.length ? el('div', { class: 'card', style: 'margin-top:10px' }, extra.map(x => el('div', { class: 'small', text: (x.month ? x.month + ' · ' : '') + x.channel + ' · ' + x.metric + ': ' + n0(x.value) + (x.source ? ' (' + x.source + ')' : '') }))) : '',
+    ...ks.filter(k => k.type === 'Qualitative').map(k => qualSection(k, edit)),
     el('h2', { text: 'Posts' }),
     el('div', { class: 'filters', role: 'group', 'aria-label': 'Which posts' }, [['all', 'All'], ['suggested', 'Suggested'], ['planned', 'Planned'], ['scheduled', 'Scheduled'], ['out', 'Out']].map(([k, w]) =>
       el('button', { type: 'button', 'aria-pressed': pf === k ? 'true' : 'false', onclick: () => { S.pf = k; render(); } }, w + ' (' + counts[k] + ')'))),
@@ -556,10 +564,27 @@ function campaignView(tag) {
       const k = (S.D.kpis || []).find(x => x.id === e.kpi) || { name: 'Removed KPI', type: 'Count' };
       const mineE = e.by && e.by.id === S.me.id;
       return el('div', { class: 'row', style: 'justify-content:space-between;padding:3px 0' }, [
-        el('span', { text: fmtDate(e.date) + ' · ' + (e.by ? e.by.name : 'imported') + ' · ' + k.name + ' ' + (k.type === 'Milestone' ? (e.value ? 'ticked' : 'unticked') : (e.mode === 'total' ? '= ' : '+') + kpiFmt(k, e.value)) + (e.note ? ' · “' + e.note + '”' : '') }),
+        el('span', { text: fmtDate(e.date) + ' · ' + (e.by ? e.by.name : 'imported') + ' · ' + k.name + ' ' + (k.type === 'Qualitative' ? (e.tag ? '[' + e.tag + ']' : 'added') : k.type === 'Milestone' ? (e.value ? 'ticked' : 'unticked') : (e.mode === 'total' ? '= ' : '+') + kpiFmt(k, e.value)) + (e.note ? ' · “' + e.note + '”' : '') }),
         mineE || S.me.comms ? el('button', { class: 'btn link small', type: 'button', text: 'Remove', onclick: ev => act(ev.target, 'deleteProgress', [e.id]).then(() => toast('Entry removed', () => act(null, 'restoreProgress', [e.id], 'Brought back'))) }) : '',
       ]);
     })) : '',
+  ]);
+}
+/** A Qualitative KPI: its entries newest first, with tag buttons to look at one sub-theme. */
+function qualSection(k, edit) {
+  const es = kpiValue(k).es || [], tags = Array.from(new Set(es.map(e => e.tag).filter(Boolean))).sort();
+  const f = (S.qtag || {})[k.id] || '', shown = f === '(none)' ? es.filter(e => !e.tag) : f ? es.filter(e => e.tag === f) : es;
+  const setF = v => { S.qtag = Object.assign({}, S.qtag, { [k.id]: v }); render(); };
+  const btn = (v, w) => el('button', { type: 'button', 'aria-pressed': f === v ? 'true' : 'false', onclick: () => setF(v) }, w);
+  return el('div', {}, [
+    el('h2', { text: k.name + ' (' + qCount(es.length) + ')' }),
+    tags.length ? el('div', { class: 'filters', role: 'group', 'aria-label': 'Sub-theme' }, [btn('', 'All (' + es.length + ')')].concat(tags.map(t => btn(t, t + ' (' + es.filter(e => e.tag === t).length + ')')), es.some(e => !e.tag) ? [btn('(none)', 'No tag (' + es.filter(e => !e.tag).length + ')')] : [])) : '',
+    el('div', { class: 'card' }, shown.length ? shown.slice(0, 60).map(e => el('div', { style: 'padding:6px 0;border-bottom:1px solid var(--line)' }, [
+      el('div', { text: '“' + e.note + '”' }),
+      el('div', { class: 'small muted' }, [fmtDate(e.date) + (e.said ? ' · ' + e.said : '') + (e.by ? ' · added by ' + e.by.name : '') + ' ', e.tag ? el('span', { class: 'chip', text: e.tag }) : '', e.source ? el('a', { href: e.source, target: '_blank', rel: 'noopener' }, 'source ↗') : '', ' ',
+        (e.by && e.by.id === S.me.id) || S.me.comms ? el('button', { class: 'btn link small', type: 'button', text: 'Remove', onclick: ev => act(ev.target, 'deleteProgress', [e.id]).then(() => toast('Entry removed', () => act(null, 'restoreProgress', [e.id], 'Brought back'))) }) : '']),
+    ])) : el('p', { class: 'muted', text: edit ? 'Nothing here yet. Use “Add KPI progress” to add the first one.' : 'Nothing here yet.' })),
+    k.link ? el('a', { class: 'small', href: k.link, target: '_blank', rel: 'noopener' }, (k.linkLabel || 'Where the evidence is') + ' ↗') : '',
   ]);
 }
 function postGroup(stage) { return stage === 'suggested' ? 'suggested' : stage === 'scheduled' ? 'scheduled' : isOut(stage) ? 'out' : 'planned'; }
@@ -678,15 +703,28 @@ function openSuggest(c, p, startMode) {
 
 function openProgress(c, kpiId) {
   const ks = kpisOf(c.tag).filter(k => k.type !== 'Boost' && k.type !== 'Posts');
-  const sel = el('select', {}, ks.map(k => el('option', { value: k.id, text: k.name + (k.target != null ? ' (' + kpiFmt(k, kpiValue(k).v) + ' / ' + kpiFmt(k, k.target) + ')' : '') })));
+  const sel = el('select', {}, ks.map(k => el('option', { value: k.id, text: k.name + (k.type === 'Qualitative' ? ' (' + qCount(kpiValue(k).v) + ')' : k.target != null ? ' (' + kpiFmt(k, kpiValue(k).v) + ' / ' + kpiFmt(k, k.target) + ')' : '') })));
   if (kpiId) sel.value = kpiId;
   const area = el('div', { style: 'display:grid;gap:8px' });
   const date = el('input', { type: 'date', value: todayIso() });
   const note = el('input', { placeholder: 'Where these came from (optional)', maxlength: 300 });
+  const noteF = field('Note', note);
+  const qtext = el('textarea', { rows: 4, maxlength: 2000, placeholder: 'The comment, quote or feedback, as it was said' }), said = el('input', { placeholder: 'Who said it, or where from (optional)', maxlength: 120 });
+  const qtag = el('input', { placeholder: 'Sub-theme tag, e.g. youth, volunteers (optional)', maxlength: 60, list: 'kpc-qtags' }), qsrc = el('input', { type: 'url', placeholder: 'https://… link to the file or message (optional)' });
+  const qtags = el('datalist', { id: 'kpc-qtags' });
+  let isQ = false;
   const err = errBox();
   let mode = 'add', value, done = null;
   const draw = () => {
     const k = ks.find(x => x.id === sel.value);
+    isQ = k.type === 'Qualitative'; noteF.style.display = isQ ? 'none' : '';
+    if (isQ) {
+      const used = Array.from(new Set((kpiValue(k).es || []).map(e => e.tag).filter(Boolean)));
+      qtags.replaceChildren(...used.map(t => el('option', { value: t })));
+      area.replaceChildren(field('Comment, quote or feedback', qtext), field('Who said it', said), field('Tag (sub-theme)', qtag, used.length ? 'Used so far: ' + used.join(', ') : 'Tags group entries inside this KPI. Type a new one any time.'), field('Source link', qsrc),
+        k.link ? el('a', { class: 'small', href: k.link, target: '_blank', rel: 'noopener' }, (k.linkLabel || 'Where the evidence is') + ' ↗') : '');
+      return;
+    }
     mode = k.entry === 'total' ? 'total' : 'add';
     value = el('input', { type: 'number', step: 'any', inputmode: 'decimal' });
     if (k.type === 'Milestone') {
@@ -709,14 +747,14 @@ function openProgress(c, kpiId) {
   sel.addEventListener('change', draw);
   let close;
   const save = b => {
-    const e = done !== null ? { mode: done ? 'done' : 'undone', date: date.value, note: note.value } : { value: value.value, mode, date: date.value, note: note.value };
+    const e = isQ ? { mode: 'note', date: date.value, note: qtext.value, said: said.value, tag: qtag.value, source: qsrc.value } : done !== null ? { mode: done ? 'done' : 'undone', date: date.value, note: note.value } : { value: value.value, mode, date: date.value, note: note.value };
     act(null, 'addProgress', [sel.value, e], 'Saved').then(() => close()).catch(x => { showErr(err, x.message); lock(b, false); });
   };
-  close = modal('Add KPI progress', [field('Which KPI', sel), area, field('Date', date), field('Note', note), err, saveRow('Save', save, () => close())]);
+  close = modal('Add KPI progress', [field('Which KPI', sel), area, field('Date', date), noteF, qtags, err, saveRow('Save', save, () => close())]);
   draw();
 }
 
-const TYPE_LABELS = { Count: 'Count (people, murals, plants…)', Money: 'Money $ (materials, travel, printing…)', Hours: 'Hours', Percent: 'Percent', Milestone: 'Milestone (done / not done)' };
+const TYPE_LABELS = { Count: 'Count (people, murals, plants…)', Money: 'Money $ (materials, travel, printing…)', Hours: 'Hours', Percent: 'Percent', Milestone: 'Milestone (done / not done)', Qualitative: 'Qualitative (feedback, quotes, comments)' };
 function openKpis(c) {
   const list = kpisOf(c.tag).filter(k => k.type !== 'Boost' && k.type !== 'Posts').map(k => Object.assign({}, k));
   const pt = postTargets(c.tag) || {};
@@ -737,8 +775,8 @@ function openKpis(c) {
     const card = el('input', { type: 'checkbox', checked: k.onCard !== false, onchange: e => { k.onCard = e.target.checked; } });
     return el('div', { class: 'kpied' }, [
       field('Name', name), field('Type', type),
-      k.type === 'Milestone' ? '' : el('div', { class: 'two' }, [field('Target', target), field('Progress is entered as', entry)]),
-      field('Link to check the real numbers', link), field('Link label', label),
+      k.type === 'Milestone' ? '' : k.type === 'Qualitative' ? el('div', { class: 'small muted', text: 'No target. Add each comment, quote or piece of feedback as an entry, with a tag if you want to split it into sub-themes.' }) : el('div', { class: 'two' }, [field('Target', target), field('Progress is entered as', entry)]),
+      field(k.type === 'Qualitative' ? 'Link to the file or folder the evidence is in' : 'Link to check the real numbers', link), field('Link label', label),
       el('div', { class: 'row', style: 'justify-content:space-between' }, [
         el('label', { style: 'display:flex;gap:6px;align-items:center' }, [card, 'Show on the campaign card']),
         el('div', { class: 'row' }, [
@@ -761,6 +799,17 @@ function openKpis(c) {
     field('Boost spend budget ($)', boost, 'Boost spend itself is added up automatically from boosted posts in Socials.'),
     el('div', {}, [el('b', { text: 'Planned posts (optional)' }), el('div', { class: 'small muted', text: 'How many posts per channel this campaign aims for. Leave blank if there’s no target (it shows as NA).' })]), ptBox, err, saveRow('Save KPIs', save, () => close())]);
   draw();
+}
+
+function openNewCampaign() {
+  const name = el('input', { maxlength: 80, placeholder: 'e.g. Spring Planting' }), start = el('input', { type: 'date' }), end = el('input', { type: 'date' });
+  const people = el('input', { maxlength: 300, placeholder: 'e.g. Erin, Blanka' }), emails = el('input', { placeholder: 'erin@kaipatiki.org.nz, blanka@…' });
+  const brief = el('textarea', { rows: 3, maxlength: 2000, placeholder: 'What the campaign is for, who it’s for, key dates (optional)' }), folder = el('input', { type: 'url', placeholder: 'https://drive.google.com/… (optional)' });
+  const err = errBox(); let close;
+  const save = b => act(null, 'addCampaign', [{ name: name.value, start: start.value, end: end.value, people: people.value, emails: emails.value, brief: brief.value, folder: folder.value }], 'Campaign added')
+    .then(r => { close(); go('campaign', r.tag); }).catch(x => { showErr(err, x.message); lock(b, false); });
+  close = modal('New campaign', [field('Campaign name', name, 'This makes its # tag, e.g. “Spring Planting” becomes #SpringPlanting.'), el('div', { class: 'two' }, [field('Starts', start), field('Ends', end)]),
+    field('People (names)', people), field('People emails', emails, 'Comma-separated. Anyone listed can edit this campaign; you are added automatically.'), field('Brief', brief), field('Folder link', folder), err, saveRow('Add campaign', save, () => close())]);
 }
 
 function openBrief(c) {
@@ -787,7 +836,7 @@ function openPost(p) {
   } });
   const m = p.channels.map(ch => {
     const f = [];
-    [['reach', 'reach'], ['impr', 'impressions'], ['eng', 'engagements'], ['clicks', 'link clicks'], ['recipients', 'sent'], ['uOpens', 'opened'], ['uClicks', 'clicked'], ['spend', 'boost $']].forEach(([k, w]) => { if (ch.m[k] != null) f.push(w + ' ' + (k === 'spend' ? money(ch.m[k]) : n0(ch.m[k]))); });
+    [['reach', 'reach'], ['impr', 'impressions'], ['eng', 'engagements'], ['clicks', 'link clicks'], ['recipients', 'sent'], ['uOpens', 'opened'], ['uClicks', 'clicked'], ['signups', 'sign-ups'], ['donations', 'donations'], ['donated', 'donated'], ['spend', 'boost $']].forEach(([k, w]) => { if (ch.m[k] != null) f.push(w + ' ' + (k === 'spend' || k === 'donated' ? money(ch.m[k]) : n0(ch.m[k]))); });
     if (ch.m.openRate != null) f.push('open rate ' + pct(ch.m.openRate));
     return el('div', { class: 'small' }, [chChip(ch.channel, ch.type), ch.status, f.length ? ' · ' + f.join(' · ') : '', ch.link ? el('a', { href: ch.link, target: '_blank', rel: 'noopener', style: 'margin-left:8px' }, 'View post ↗') : '']);
   });
@@ -977,7 +1026,7 @@ function inboxView() {
       main = [el('b', { text: (i.mine ? 'You' : i.f.by.name) + ' sent app feedback' }), i.f.page ? ' (from ' + i.f.page + ')' : '', el('div', { class: 'small muted', text: '“' + i.f.text + '”' })];
     } else {
       const k = S.D.kpis.find(x => x.id === i.e.kpi) || { name: 'a KPI', type: 'Count' };
-      main = [el('b', { text: (i.mine ? 'You' : i.e.by ? i.e.by.name : '') + ' updated ' + k.name }), ' for ' + cName(i.e.campaign) + ': ' + (k.type === 'Milestone' ? (i.e.value ? 'ticked' : 'unticked') : (i.e.mode === 'total' ? '= ' : '+') + kpiFmt(k, i.e.value)), i.e.note ? el('div', { class: 'small muted', text: '“' + i.e.note + '”' }) : ''];
+      main = [el('b', { text: (i.mine ? 'You' : i.e.by ? i.e.by.name : '') + ' updated ' + k.name }), ' for ' + cName(i.e.campaign) + ': ' + (k.type === 'Qualitative' ? 'new entry' + (i.e.tag ? ' [' + i.e.tag + ']' : '') : k.type === 'Milestone' ? (i.e.value ? 'ticked' : 'unticked') : (i.e.mode === 'total' ? '= ' : '+') + kpiFmt(k, i.e.value)), i.e.note ? el('div', { class: 'small muted', text: '“' + i.e.note + '”' }) : ''];
       acts = [el('button', { class: 'btn sm', type: 'button', text: 'Open campaign', onclick: () => { read(); go('campaign', i.e.campaign); } })];
     }
     acts.push(i.state === 'done'
